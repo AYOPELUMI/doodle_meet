@@ -1,18 +1,48 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Video, Eye, EyeOff, ArrowRight, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import Script from "next/script"
 
 export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  useEffect(() => {
+    if (!window.google) return
+
+    window.google.accounts.id.initialize({
+      client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+      callback: async (response) => {
+        try {
+          // Decode the ID token to get user info
+          const payload = JSON.parse(atob(response.credential.split('.')[1]))
+          if (payload.name) setName(payload.name)
+          if (payload.email) setEmail(payload.email)
+
+          // Optionally auto-submit to Supabase for sign-up
+          // const { data, error } = await supabase.auth.signInWithIdToken({
+          //   provider: 'google',
+          //   token: response.credential,
+          // })
+          // if (error) throw error
+
+        } catch (err) {
+          console.error("Google One Tap sign-up failed", err)
+        }
+      },
+      auto_select: false,
+      use_fedcm_for_prompt: true,
+    })
+
+    window.google.accounts.id.prompt()
+  }, [])
 
   const passwordChecks = [
     { label: "At least 8 characters", met: password.length >= 8 },
@@ -127,9 +157,8 @@ export default function SignupPage() {
                   {passwordChecks.map((check) => (
                     <div
                       key={check.label}
-                      className={`flex items-center gap-2 text-xs ${
-                        check.met ? "text-success" : "text-muted-foreground"
-                      }`}
+                      className={`flex items-center gap-2 text-xs ${check.met ? "text-success" : "text-muted-foreground"
+                        }`}
                     >
                       <Check className="h-3 w-3" />
                       {check.label}
@@ -205,6 +234,7 @@ export default function SignupPage() {
           </p>
         </div>
       </div>
+      <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
     </div>
   )
 }
