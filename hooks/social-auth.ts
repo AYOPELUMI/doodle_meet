@@ -1,3 +1,5 @@
+"use client"
+
 import { createSupabaseClient } from "@/lib/supabase/client"
 import { baseUrl } from "@/lib/utils"
 import { toast } from "sonner"
