@@ -1,188 +1,219 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import {
-  Video,
-  Mic,
-  MicOff,
-  VideoIcon,
-  VideoOff,
-  Settings,
-  ArrowLeft,
-  Copy,
-  Check,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
+import { nanoid } from "nanoid";
+import { ArrowLeft, Calendar, Copy, Loader2, Video, Waves } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { createSupabaseClient } from "@/lib/supabase/client";
+import { useAuthStore } from "@/lib/store/auth-store";
 
 export default function NewMeetingPage() {
-  const [isMuted, setIsMuted] = useState(false)
-  const [isVideoOff, setIsVideoOff] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const meetingCode = "abc-defg-hij"
-  const meetingLink = `https://villeto.app/m/${meetingCode}`
+  const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const supabase = createSupabaseClient();
+  const [title, setTitle] = useState("Weekly sync");
+  const [description, setDescription] = useState("Quick alignment on priorities, blockers, and next steps.");
+  const [roomMode, setRoomMode] = useState<"video" | "audio">("video");
+  const [scheduleType, setScheduleType] = useState<"instant" | "scheduled">("instant");
+  const [scheduledFor, setScheduledFor] = useState(format(new Date(Date.now() + 1000 * 60 * 60), "yyyy-MM-dd'T'HH:mm"));
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(meetingLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const meetingId = useMemo(() => nanoid(10).toLowerCase(), []);
+  const inviteLink =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/meeting/${meetingId}?title=${encodeURIComponent(title)}&mode=${roomMode}`
+      : "";
+  const handleCreateMeeting = async () => {
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        id: meetingId,
+        title,
+        description,
+        room_mode: roomMode,
+        status: scheduleType === "instant" ? "live" : "scheduled",
+        scheduled_for: scheduleType === "scheduled" ? new Date(scheduledFor).toISOString() : null,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from("meetings").upsert(payload, { onConflict: "id" });
+
+      if (error) {
+        toast.error(`${error.message} The room link still works for frontend testing.`);
+      }
+
+      router.push(`/meeting/${meetingId}?title=${encodeURIComponent(title)}&mode=${roomMode}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create meeting.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Video className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-bold font-[family-name:var(--font-heading)]">Villeto</span>
-        </Link>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/dashboard">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Back to Dashboard
+    <div className="min-h-screen bg-background text-foreground">
+      <div className=" px-6 py-8 lg:px-8">
+        <div className="mb-8 flex items-center justify-between">
+          <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white">
+            <ArrowLeft className="h-4 w-4" />
+            Back to dashboard
           </Link>
-        </Button>
-      </header>
+          <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.25em] text-white/60">
+            Create room
+          </div>
+        </div>
 
-      {/* Main Content */}
-      <main className="flex flex-1 items-center justify-center p-6">
-        <div className="mx-auto grid w-full max-w-4xl gap-8 lg:grid-cols-2">
-          {/* Video Preview */}
-          <div className="flex flex-col gap-4">
-            <div className="relative aspect-video overflow-hidden rounded-2xl bg-secondary">
-              {isVideoOff ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-muted text-3xl font-bold text-muted-foreground">
-                    JD
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-[2rem] border border-white/10 p-8 shadow-2xl shadow-cyan-950/10 backdrop-blur">
+            <p className="text-sm uppercase tracking-[0.25em] text-teal-600">Room setup</p>
+            <h1 className="mt-3 text-4xl font-bold tracking-tight font-heading">
+              Create a Meet-style room
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Set the room name, choose whether this is a video or audio-first session,
+              and generate the invite link you&apos;ll share with the group.
+            </p>
+
+            <div className="mt-8 space-y-6">
+              <div className="space-y-2">
+                <Label className="">Meeting title</Label>
+                <Input value={title} onChange={(event) => setTitle(event.target.value)} className="h-12 rounded-2xl border-white/10 bg-black/20 text-white placeholder:text-white/35" />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="">Agenda or context</Label>
+                <Textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-28 rounded-2xl border-white/10 bg-black/20 text-white placeholder:text-white/35" />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setRoomMode("video")}
+                  className={`rounded-[1.5rem] border p-5 text-left transition ${roomMode === "video" ? "border-teal-400 bg-card" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                >
+                  <Video className="h-5 w-5" />
+                  <p className="mt-3 font-semibold">Video meeting</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Camera-first room with chat and screen sharing.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomMode("audio")}
+                  className={`rounded-[1.5rem] border p-5 text-left transition ${roomMode === "audio" ? "border-cyan-400 bg-card" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                >
+                  <Waves className="h-5 w-5" />
+                  <p className="mt-3 font-semibold">Audio room</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Quick standups or low-bandwidth calls without video.</p>
+                </button>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setScheduleType("instant")}
+                  className={`rounded-[1.5rem] border p-5 text-left transition ${scheduleType === "instant" ? "border-cyan-400/70 bg-white/10 shadow-2xs" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                >
+                  <p className="font-semibold">Start instantly</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Use the room right away.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleType("scheduled")}
+                  className={`rounded-[1.5rem] border p-5 text-left transition ${scheduleType === "scheduled" ? "border-cyan-400/70 bg-white/10 shadow-2xs" : "border-white/10 bg-black/20 hover:border-white/20"}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <p className="font-semibold">Schedule for later</p>
                   </div>
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center bg-secondary">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-muted text-3xl font-bold text-muted-foreground">
-                    JD
-                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">Keep it on the dashboard first.</p>
+                </button>
+              </div>
+
+              {scheduleType === "scheduled" && (
+                <div className="space-y-2">
+                  <Label className="">Scheduled time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={scheduledFor}
+                    onChange={(event) => setScheduledFor(event.target.value)}
+                    className="h-12 rounded-2xl border-white/10 "
+                  />
                 </div>
               )}
-
-              {/* Pre-call controls overlay */}
-              <div className="absolute inset-x-0 bottom-0 flex justify-center gap-3 p-4">
-                <Button
-                  variant={isMuted ? "destructive" : "secondary"}
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={() => setIsMuted(!isMuted)}
-                >
-                  {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant={isVideoOff ? "destructive" : "secondary"}
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={() => setIsVideoOff(!isVideoOff)}
-                >
-                  {isVideoOff ? (
-                    <VideoOff className="h-4 w-4" />
-                  ) : (
-                    <VideoIcon className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Microphone</Label>
-                <Select defaultValue="default">
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Built-in Microphone</SelectItem>
-                    <SelectItem value="headset">Headset</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Camera</Label>
-                <Select defaultValue="default">
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Built-in Camera</SelectItem>
-                    <SelectItem value="external">External Camera</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </div>
 
-          {/* Meeting Info */}
-          <div className="flex flex-col justify-center gap-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight font-[family-name:var(--font-heading)] md:text-3xl">
-                Ready to join?
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Set up your audio and video before joining the meeting
-              </p>
-            </div>
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/30 backdrop-blur">
+            <p className="text-sm uppercase tracking-[0.25em] text-cyan-300/80">Invite preview</p>
+            <h2 className="mt-3 text-2xl font-bold font-heading">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
 
-            <div className="flex flex-col gap-3">
-              <Label>Meeting Name</Label>
-              <Input
-                defaultValue="Quick Meeting"
-                className="h-11"
-                placeholder="Enter meeting name..."
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm text-muted-foreground">Meeting Link</Label>
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2.5">
-                <code className="flex-1 truncate text-sm text-muted-foreground">
-                  {meetingLink}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={handleCopy}
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-success" />
-                  ) : (
+            <div className="mt-8 space-y-4">
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] ">Room ID</p>
+                <p className="mt-2 font-semibold">{meetingId}</p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/45">Invite link</p>
+                <div className="mt-2 flex items-center gap-3">
+                  <code className="truncate text-sm text">{inviteLink}</code>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20"
+                    onClick={() => {
+                      navigator.clipboard.writeText(inviteLink);
+                      toast.success("Invite link copied.");
+                    }}
+                  >
                     <Copy className="h-4 w-4" />
-                  )}
-                </Button>
+                  </Button>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 pt-2">
-              <Button size="lg" className="h-12 text-base" asChild>
-                <Link href={`/meeting/${meetingCode}`}>
-                  <VideoIcon className="mr-2 h-5 w-5" />
-                  Join Meeting
-                </Link>
+            <div className="mt-8 rounded-[1.5rem] border border-white/10 bg-card">
+              <p className="text-sm font-medium">What you get</p>
+              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                <li>Stream-powered video, audio, and screen sharing</li>
+                <li>Linked in-call chat using the same room ID</li>
+                <li>Supabase-backed meeting records for dashboard recall</li>
+              </ul>
+            </div>
+
+            <div className="mt-8 flex flex-col gap-3">
+              <Button className="h-12 rounded-2xl text-base" onClick={handleCreateMeeting} disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create and open room"}
               </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                You can invite others after joining
-              </p>
+              <Button
+                variant="outline"
+                className="h-12 rounded-2xl border-white/10 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  navigator.clipboard.writeText(inviteLink);
+                  toast.success("Invite link copied.");
+                }}
+              >
+                Copy invite first
+              </Button>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
-  )
+  );
 }

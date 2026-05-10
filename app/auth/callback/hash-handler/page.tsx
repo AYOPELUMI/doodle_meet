@@ -3,6 +3,7 @@
 import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client';
+import { ensureProfile } from '@/lib/supabase/ensure-profile';
 
 // Create a wrapper component that handles the Suspense boundary
 function HashHandlerContent() {
@@ -32,75 +33,23 @@ function HashHandlerContent() {
                     access_token,
                     refresh_token,
                 })
-                console.log({ sessionError })
-
                 if (sessionError) throw sessionError
 
                 // Get the authenticated user
                 const { data: { user }, error: userError } = await supabase.auth.getUser()
-                console.log({ userError })
 
                 if (userError || !user) throw userError || new Error('User not found')
 
-                console.log({ user })
-                // Check if profile exists
                 const { data: existingProfile, error: profileError } = await supabase
                     .from('profiles')
                     .select('id')
                     .eq('id', user.id)
                     .maybeSingle()
-
-                if (profileError) {
-                    console.error('Profile check error:', profileError)
-                    // Continue even if profile check fails
-                }
                 ////console.log({ existingProfile }, { profileError }, !existingProfile)
                 // Create profile if it doesn't exist
                 if (!existingProfile) {
-                    const { error: upsertError } = await supabase
-                        .from('profiles')
-                        .upsert({
-                            id: user.id,
-                            email: user.email,
-                            username: user.user_metadata?.username || user.email?.split('@')[0],
-                            full_name: user.user_metadata?.full_name || user.email?.split('@')[0],
-                            avatar_url: user.user_metadata?.avatar_url || null,
-                            plan: 'free',
-                            snippets_count: 0,
-                            max_snippets: 50,
-                            updated_at: new Date().toISOString()
-                        }, {
-                            onConflict: 'id'
-                        })
 
-                    if (upsertError) {
-                        console.error('Profile creation error:', upsertError)
-                        // Continue even if profile creation fails
-                    }
-                }
-                if (existingProfile) {
-
-
-                    // const sessionData = {
-                    //     id: sessionId,
-                    //     user_id: existingProfile?.id,
-                    //     device_info: device,
-                    //     ip_address: ip,
-                    //     location: location,
-                    //     expires_at: new Date((user?.expires_at ?? 1) * 1000).toISOString(),
-                    //     last_used_at: new Date().toISOString(),
-
-                    // };
-
-                    // await supabase.from('sessions').upsert(sessionData);
-                    // const { error: loginError } = await supabase.from('login_history').insert({
-                    //     user_id: existingProfile?.id,
-                    //     device_info: device,
-                    //     ip_address: ip,
-                    //     location: location,
-                    //     status: 'success',
-                    //     created_at: new Date().toISOString()
-                    // });
+                    await ensureProfile(user)
                 }
 
                 // Clean URL and redirect

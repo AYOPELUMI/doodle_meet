@@ -7,14 +7,11 @@ import { toast } from "sonner"
 const supabase = createSupabaseClient()
 
 export async function signInWithGoogle() {
-
-    //console.log({ baseUrl })
     try {
-        //console.log(window.location.origin)
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${baseUrl}/auth/callback`,
+                redirectTo: `${baseUrl || window.location.origin}/auth/callback?redirect_to=/dashboard`,
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent'
@@ -22,25 +19,23 @@ export async function signInWithGoogle() {
             }
         })
         if (error) throw error
-    } catch (error) {
+    } catch {
         toast.error('Failed to sign in with Google')
     } finally {
     }
 }
 export async function signInWithGithub() {
-
-
     try {
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'github',
             options: {
-                redirectTo: `${baseUrl}/auth/callback`
+                redirectTo: `${baseUrl || window.location.origin}/auth/callback?redirect_to=/dashboard`
             }
         })
 
         if (error) throw error
-    } catch (error: any) {
-        toast.error(error.message)
+    } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to sign in with GitHub")
     } finally {
     }
 }

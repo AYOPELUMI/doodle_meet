@@ -1,6 +1,8 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-
 import { NextResponse } from 'next/server'
+import { toCookieUser } from '@/lib/auth/profile'
+import { APP_USER_COOKIE, serializeCookieUser } from '@/lib/auth/cookies'
+import { ensureProfile } from '@/lib/supabase/ensure-profile'
 
 export async function GET(request: Request) {
     const requestUrl = new URL(request.url)
@@ -9,7 +11,6 @@ export async function GET(request: Request) {
 
     try {
         const code = requestUrl.searchParams.get('code')
-        console.log({ code })
         if (!code) {
             // If no code, pass through to client-side handler
             return NextResponse.redirect(
@@ -18,16 +19,24 @@ export async function GET(request: Request) {
         }
 
         const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-        await supabase.auth.setSession({
-            access_token: data.session?.access_token!,
-            refresh_token: data.session?.refresh_token!
-        })
         if (error) throw error
 
-        //console.log({ redirectTo })
-        //console.log({ data })
-        //console.log({ requestUrl })
-        return NextResponse.redirect(`${requestUrl.origin}${redirectTo}`)
+        if (data.user) {
+            await ensureProfile(data.user)
+        }
+
+        const response = NextResponse.redirect(`${requestUrl.origin}${redirectTo}`)
+
+        if (data.user) {
+            const cookieUser = toCookieUser(data.user)
+            response.cookies.set(APP_USER_COOKIE, serializeCookieUser(cookieUser), {
+                path: "/",
+                sameSite: "lax",
+                maxAge: 60 * 60 * 24 * 7,
+            })
+        }
+
+        return response
 
     } catch (error) {
         console.log(error)

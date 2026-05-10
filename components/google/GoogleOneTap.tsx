@@ -3,6 +3,7 @@
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
+import { ensureProfile } from '@/lib/supabase/ensure-profile'
 
 declare global {
     interface Window {
@@ -48,23 +49,25 @@ const GoogleOneTap = () => {
         // check session
         const { data: claims, error } = await supabase.auth.getClaims()
         if (error) console.error(error)
-        if (claims) {
-            router.push('/')
-            return
-        }
+        // if (claims) {
+        //     router.push('/dashboard')
+        //     return
+        // }
 
         window.google!.accounts.id.initialize({
             client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
             callback: async (response: CredentialResponse) => {
                 try {
-                    console.log({ response })
                     const { data, error } = await supabase.auth.signInWithIdToken({
                         provider: 'google',
                         token: response.credential,
                         nonce,
                     })
                     if (error) throw error
-                    router.push('/')
+                    if (data.user) {
+                        await ensureProfile(data.user)
+                    }
+                    router.push('/dashboard')
                 } catch (error) {
                     console.error(error)
                 }

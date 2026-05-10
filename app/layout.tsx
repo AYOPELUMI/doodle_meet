@@ -1,17 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Space_Grotesk } from 'next/font/google'
-// import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-})
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  variable: '--font-space-grotesk',
-})
+import "@stream-io/video-react-sdk/dist/css/styles.css"
+import "stream-chat-react/dist/css/index.css"
+import { AppProviders } from "@/components/providers/app-providers"
+import { createSupabaseServerClient } from "@/lib/supabase/server"
+import { toCookieUser } from "@/lib/auth/profile"
 
 export const metadata: Metadata = {
   title: 'Doodle - Video Meetings Made Simple',
@@ -41,20 +34,35 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  let initialUser = null
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    initialUser = toCookieUser(user, profile)
+  }
+
   return (
     <html lang="en">
       <head>
         <script src="https://accounts.google.com/gsi/client" async defer />
       </head>
-      <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
-
-        {children}
-        {/* <Analytics /> */}
+      <body className="font-sans antialiased">
+        <AppProviders initialUser={initialUser}>{children}</AppProviders>
       </body>
     </html>
   )
