@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { ensureProfile } from '@/lib/supabase/ensure-profile'
+import { useAuthStore } from '@/lib/store/auth-store'
 
 declare global {
     interface Window {
@@ -16,8 +18,10 @@ declare global {
                         nonce?: string
                         use_fedcm_for_prompt?: boolean
                         auto_select?: boolean
+                        cancel_on_tap_outside?: boolean
                     }) => void
                     prompt: () => void
+                    cancel: () => void
                 }
             }
         }
@@ -39,22 +43,42 @@ const generateNonce = async (): Promise<[string, string]> => {
     return [nonce, hashedNonce]
 }
 
+const supportsFedCm = () => {
+    if (typeof navigator === 'undefined') return false
+
+    const userAgent = navigator.userAgent
+    const isChromium = /Chrome|Chromium|Edg\//.test(userAgent)
+    const isFirefox = /Firefox\//.test(userAgent)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent)
+
+    return isChromium && !isFirefox && !isSafari
+}
+
 const GoogleOneTap = () => {
     const supabase = createSupabaseClient()
     const router = useRouter()
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+    const hasInitializedRef = useRef(false)
+
+    useEffect(() => {
+        if (!isAuthenticated) return
+        window.google?.accounts.id.cancel()
+    }, [isAuthenticated])
 
     const initializeGoogleOneTap = async () => {
+        if (hasInitializedRef.current || isAuthenticated || !window.google) return
+
         const [nonce, hashedNonce] = await generateNonce()
 
-        // check session
         const { data: claims, error } = await supabase.auth.getClaims()
-        if (error) console.error(error)
-        // if (claims) {
-        //     router.push('/dashboard')
-        //     return
-        // }
+        if (error) {
+            console.error(error)
+        }
+        if (claims) return
 
-        window.google!.accounts.id.initialize({
+        hasInitializedRef.current = true
+
+        window.google.accounts.id.initialize({
             client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
             callback: async (response: CredentialResponse) => {
                 try {
@@ -63,19 +87,25 @@ const GoogleOneTap = () => {
                         token: response.credential,
                         nonce,
                     })
+
                     if (error) throw error
                     if (data.user) {
                         await ensureProfile(data.user)
                     }
-                    router.push('/dashboard')
-                } catch (error) {
-                    console.error(error)
+
+                    router.refresh()
+                } catch (nextError) {
+                    console.error(nextError)
+                    hasInitializedRef.current = false
                 }
             },
             nonce: hashedNonce,
-            use_fedcm_for_prompt: true,
+            auto_select: false,
+            cancel_on_tap_outside: false,
+            use_fedcm_for_prompt: supportsFedCm(),
         })
-        window.google!.accounts.id.prompt()
+
+        window.google.accounts.id.prompt()
     }
 
     return (
@@ -89,4 +119,3 @@ const GoogleOneTap = () => {
 }
 
 export default GoogleOneTap
-

@@ -15,6 +15,7 @@ import {
   Mic,
   Plus,
   Trash2,
+  Users,
   Video,
   Waves,
 } from "lucide-react";

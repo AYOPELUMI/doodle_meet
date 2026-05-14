@@ -35,11 +35,13 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
     visibility: input.visibility,
+    audience: input.audience,
     waiting_room_enabled: input.enableWaitingRoom,
     auto_record_enabled: input.enableRecording,
     auto_transcript_enabled: input.enableTranscription,
     duration_minutes: input.durationMinutes,
     calendar_provider: input.calendarProvider === "none" ? null : input.calendarProvider,
+    co_hosts: input.coHosts,
   };
 
   const { error: meetingError } = await supabase.from("meetings").upsert(meetingPayload, {
@@ -71,6 +73,18 @@ export async function POST(request: Request) {
         one_click_token: invite.one_click_token,
         status: "pending",
         provider: "supabase_queue",
+        created_at: now,
+      })),
+    );
+  }
+
+  if (input.coHosts.length) {
+    await supabase.from("meeting_events").insert(
+      input.coHosts.map((email) => ({
+        meeting_id: meetingId,
+        actor_id: user.id,
+        event_type: "co_host_invited",
+        payload: { email },
         created_at: now,
       })),
     );

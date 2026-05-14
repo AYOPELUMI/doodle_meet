@@ -26,7 +26,7 @@ import {
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { cn } from "@/lib/utils";
-import { convertSegmentPathToStaticExportFilename } from "next/dist/shared/lib/segment-cache/segment-value-encoding";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -47,8 +47,8 @@ export function DashboardSidebar() {
     try {
       console.log("i got here in the logout")
       setUser(null)
-      // const { error } = await supabase.auth.signOut();
-      // console.log({ error })
+      await supabase.auth.signOut();
+
       router.push("/login");
     } catch (error) {
       console.error(error)
@@ -146,6 +146,9 @@ export function DashboardSidebar() {
         <Separator />
 
         <div className="p-3">
+          <div className={cn("mb-3 flex", collapsed ? "justify-center" : "justify-start")}>
+            <ThemeSwitcher compact={collapsed} />
+          </div>
           <div className={cn("flex items-center gap-3 rounded-2xl border border-border bg-secondary/30 p-3", collapsed && "justify-center")}>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background">
               <User className="h-4 w-4 text-muted-foreground" />

@@ -172,88 +172,99 @@ using (auth.uid() = id);
 Meetings:
 
 ```sql
+-- Drop existing policies first
+drop policy if exists "meetings_select_host_or_member" on public.meetings;
+drop policy if exists "meetings_insert_host" on public.meetings;
+drop policy if exists "meetings_update_host" on public.meetings;
+
+-- Fixed select policy using a direct subquery without circular reference
 create policy "meetings_select_host_or_member"
 on public.meetings
 for select
 using (
-  created_by = auth.uid()
-  or exists (
-    select 1
-    from public.meeting_members mm
-    where mm.meeting_id = meetings.id
-      and mm.user_id = auth.uid()
-  )
+created_by = auth.uid()
+or auth.uid() in (
+select mm.user_id
+from public.meeting_members mm
+where mm.meeting_id = meetings.id
+)
 );
 
+-- Insert policy - only authenticated users can create meetings
 create policy "meetings_insert_host"
 on public.meetings
 for insert
-with check (created_by = auth.uid());
+with check (
+auth.role() = 'authenticated'
+and created_by = auth.uid()
+);
 
+-- Update policy remains the same
 create policy "meetings_update_host"
 on public.meetings
 for update
 using (created_by = auth.uid());
-```
 
-Meeting members:
+-- Drop existing policies first
+drop policy if exists "meeting_members_select_host_or_self" on public.meeting_members;
+drop policy if exists "meeting_members_insert_host_or_self" on public.meeting_members;
 
-```sql
+-- Fixed select policy
 create policy "meeting_members_select_host_or_self"
 on public.meeting_members
 for select
 using (
-  user_id = auth.uid()
-  or exists (
-    select 1
-    from public.meetings m
-    where m.id = meeting_members.meeting_id
-      and m.created_by = auth.uid()
-  )
+user_id = auth.uid()
+or auth.uid() in (
+select m.created_by
+from public.meetings m
+where m.id = meeting_members.meeting_id
+)
 );
 
+-- Fixed insert policy
 create policy "meeting_members_insert_host_or_self"
 on public.meeting_members
 for insert
 with check (
-  user_id = auth.uid()
-  or exists (
-    select 1
-    from public.meetings m
-    where m.id = meeting_members.meeting_id
-      and m.created_by = auth.uid()
-  )
+user_id = auth.uid()
+or auth.uid() in (
+select m.created_by
+from public.meetings m
+where m.id = meeting_members.meeting_id
+)
 );
-```
 
-Meeting events:
+-- Drop existing policies first
+drop policy if exists "meeting_events_select_authorized" on public.meeting_events;
+drop policy if exists "meeting_events_insert_authorized" on public.meeting_events;
 
-```sql
+-- Fixed select policy
 create policy "meeting_events_select_authorized"
 on public.meeting_events
 for select
 using (
-  exists (
-    select 1
-    from public.meetings m
-    where m.id = meeting_events.meeting_id
-      and (
-        m.created_by = auth.uid()
-        or exists (
-          select 1
-          from public.meeting_members mm
-          where mm.meeting_id = m.id
-            and mm.user_id = auth.uid()
-        )
-      )
-  )
+exists (
+select 1
+from public.meetings m
+where m.id = meeting_events.meeting_id
+and (
+m.created_by = auth.uid()
+or auth.uid() in (
+select mm.user_id
+from public.meeting_members mm
+where mm.meeting_id = m.id
+)
+)
+)
 );
 
+-- Insert policy (this one should be fine as is)
 create policy "meeting_events_insert_authorized"
 on public.meeting_events
 for insert
 with check (
-  actor_id = auth.uid()
+actor_id = auth.uid()
 );
 ```
 
@@ -380,11 +391,13 @@ alter table public.profiles
 
 alter table public.meetings
   add column if not exists visibility text default 'private' check (visibility in ('public', 'private')),
+  add column if not exists audience text default 'anyone' check (audience in ('anyone', 'authenticated')),
   add column if not exists waiting_room_enabled boolean not null default true,
   add column if not exists auto_record_enabled boolean not null default false,
   add column if not exists auto_transcript_enabled boolean not null default false,
   add column if not exists duration_minutes integer,
-  add column if not exists calendar_provider text;
+  add column if not exists calendar_provider text,
+  add column if not exists co_hosts text[] not null default '{}'::text[];
 
 alter table public.meeting_members
   add column if not exists last_seen_at timestamptz;
@@ -468,19 +481,24 @@ alter table public.meeting_transcripts enable row level security;
 alter table public.meeting_recordings enable row level security;
 ```
 
+When applying policy changes in the Supabase SQL editor, use `drop policy if exists ...` before recreating them. A plain `create policy` will fail once the policy already exists.
+
 ```sql
+drop policy if exists "calendar_connections_self" on public.calendar_connections;
 create policy "calendar_connections_self"
 on public.calendar_connections
 for all
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
+drop policy if exists "calendar_sync_jobs_self" on public.calendar_sync_jobs;
 create policy "calendar_sync_jobs_self"
 on public.calendar_sync_jobs
 for all
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
+drop policy if exists "meeting_invites_host_or_member" on public.meeting_invites;
 create policy "meeting_invites_host_or_member"
 on public.meeting_invites
 for select
@@ -498,6 +516,7 @@ using (
   )
 );
 
+drop policy if exists "meeting_invites_host_insert" on public.meeting_invites;
 create policy "meeting_invites_host_insert"
 on public.meeting_invites
 for insert
@@ -509,6 +528,7 @@ with check (
   )
 );
 
+drop policy if exists "meeting_recordings_authorized" on public.meeting_recordings;
 create policy "meeting_recordings_authorized"
 on public.meeting_recordings
 for select
@@ -526,6 +546,7 @@ using (
   )
 );
 
+drop policy if exists "meeting_transcripts_authorized" on public.meeting_transcripts;
 create policy "meeting_transcripts_authorized"
 on public.meeting_transcripts
 for select
@@ -566,6 +587,17 @@ using (
   - `/meeting/<meeting_id>?invite=<one_click_token>`
 - Mark `meeting_invites.status` and `invite_email_jobs.status`
 
+### Meeting Controls
+
+- Hosts now update meeting access and lifecycle from the frontend through:
+  - `PATCH /api/meetings/:id`
+- Persist these fields on `public.meetings`:
+  - `audience`
+  - `scheduled_for`
+  - `status`
+  - `co_hosts`
+- Guest-hosted meetings still work without persistence, but authenticated hosts should use the persisted route so dashboard and room state stay in sync.
+
 ### Recordings
 
 - Consume Stream call webhooks
@@ -576,3 +608,28 @@ using (
 
 - When transcript processing finishes, insert or update `meeting_transcripts`
 - Optionally generate `summary`
+
+## Supabase Jobs And Cron
+
+Add these extensions before scheduling background work:
+
+```sql
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+```
+
+Recommended recurring jobs:
+
+- Presence cleanup every 5 minutes
+- Invite delivery queue every minute
+- Calendar sync queue every 2 minutes
+- Transcript polling every 5 minutes
+- Recording ingestion every 5 minutes
+
+The runnable SQL version of the policy resets and cron examples is in:
+
+- `supabase/meet_backend_jobs_and_policies.sql`
+
+```
+
+```

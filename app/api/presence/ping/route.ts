@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { meetingId } = (await request.json()) as { meetingId?: string };
+  const { meetingId } = (await request?.json()) as { meetingId?: string };
   const now = new Date().toISOString();
 
   await supabase

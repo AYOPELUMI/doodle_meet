@@ -46,7 +46,7 @@ export function AppProviders({ children, initialUser }: AppProvidersProps) {
   }, [setUser]);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       {children}
       <Toaster richColors />
     </ThemeProvider>

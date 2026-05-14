@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 type IntegrationRow = {
   provider: string;
@@ -115,6 +116,15 @@ export function SettingsClient({ profile, integrations }: SettingsClientProps) {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="flex items-center justify-between rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Appearance</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose light, dark, or follow your device theme.
+                  </p>
+                </div>
+                <ThemeSwitcher />
               </div>
               <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-sm font-medium">Presence status</p>
